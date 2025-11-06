@@ -1,218 +1,278 @@
 # IST Key-Value Store (IST-KVS)
 
-## Overview
+## Project Description
 
-IST-KVS is a concurrent key-value storage system developed as part of the Operating Systems course (2024-25) at Instituto Superior Técnico. The system stores data as key-value pairs in a hashtable and supports parallel processing, backup operations, and client-server communication through named pipes.
+IST-KVS is a high-performance, concurrent key-value storage system that demonstrates advanced operating systems concepts including multithreading, inter-process communication, and synchronization mechanisms. Built for the Operating Systems course at Instituto Superior Técnico (2024-25), this system showcases how modern storage solutions handle concurrent operations, maintain data consistency, and provide real-time updates to connected clients.
 
-## Features
+The system implements a hashtable-based storage engine where data is organized as key-value pairs. It supports batch processing through job files, performs non-blocking backups using child processes, and enables remote clients to subscribe to key changes through named pipes (FIFOs). The architecture emphasizes scalability and parallelism while ensuring atomic operations and thread-safe access to shared data structures.
 
-- **Key-Value Storage**: Store and retrieve data using string keys and values (max 40 characters each)
-- **Batch Processing**: Process command files (`.job`) from a specified directory
-- **Concurrent Execution**: Multiple threads process different job files simultaneously
-- **Non-blocking Backups**: Asynchronous backup operations using child processes
-- **Client-Server Architecture**: Remote clients can subscribe to key changes and receive notifications
-- **POSIX Interface**: File operations using POSIX file descriptors
+### Key Features
 
-## Project Structure
+- **Concurrent Processing**: Multi-threaded architecture processes multiple job files simultaneously
+- **Non-Blocking Backups**: Fork-based child processes create snapshots without halting operations
+- **Client-Server Model**: Remote clients connect via named pipes to subscribe to key updates
+- **Real-Time Notifications**: Clients receive immediate notifications when subscribed keys change
+- **POSIX Compliance**: File operations using POSIX file descriptors
+- **Scalable Synchronization**: Optimized locking mechanisms maximize parallelism
 
-The project is divided into two parts:
+## Architecture
 
-### Part 1: Core Functionality
-- **Exercise 1**: File system interaction and batch processing
-- **Exercise 2**: Non-blocking backup mechanism using `fork()`
-- **Exercise 3**: Parallelization with multiple threads
+### Storage Layer
+- Hashtable data structure with collision handling
+- Thread-safe operations using mutexes and read-write locks
+- Atomic execution of all operations (WRITE, READ, DELETE)
 
-### Part 2: Client-Server Communication
-- **Exercise 1**: Client interaction via named pipes (FIFOs)
-- **Exercise 2**: Connection termination using signals (SIGUSR1)
+### Processing Layer
+- **Job Processing Threads**: Execute commands from `.job` files in parallel
+- **Backup Processes**: Child processes handle asynchronous snapshots
+- **Concurrent Backup Control**: Configurable limit on simultaneous backups
+
+### Communication Layer (Part 2)
+- **Host Thread**: Accepts client connection requests via registration FIFO
+- **Manager Threads**: Dedicated threads handle each client session
+- **Producer-Consumer Buffer**: Coordinates connection requests using semaphores
+- **Named Pipes**: Three per client for requests, responses, and notifications
+- **Signal Handling**: SIGUSR1 triggers graceful disconnection of all clients
 
 ## Commands
 
 ### Server Commands (in .job files)
 
-- **WRITE**: Create or update key-value pairs
-  ```
-  WRITE [(key1,value1)(key2,value2)]
-  ```
+```bash
+WRITE [(key1,value1)(key2,value2)]    # Create or update key-value pairs
+READ [key1,key2]                       # Retrieve values (returns KVSERROR if not found)
+DELETE [key1,key2]                     # Remove pairs (returns KVSMISSING if not found)
+SHOW                                    # Display all pairs (alphabetically sorted)
+WAIT <milliseconds>                     # Introduce execution delay
+BACKUP                                  # Create hashtable snapshot
+HELP                                    # Display command information
+```
 
-- **READ**: Retrieve values for specified keys
-  ```
-  READ [key1,key2]
-  ```
-  Returns `KVSERROR` for non-existent keys.
-
-- **DELETE**: Remove key-value pairs
-  ```
-  DELETE [key1,key2]
-  ```
-  Returns `KVSMISSING` for non-existent keys.
-
-- **SHOW**: Display all stored key-value pairs (alphabetically sorted)
-  ```
-  SHOW
-  ```
-
-- **WAIT**: Introduce execution delay (in milliseconds)
-  ```
-  WAIT 2000
-  ```
-
-- **BACKUP**: Create a backup of the current hashtable state
-  ```
-  BACKUP
-  ```
-
-- **HELP**: Display available commands and usage information
-  ```
-  HELP
-  ```
+Comments start with `#` and are ignored.
 
 ### Client Commands
 
-- **SUBSCRIBE**: Subscribe to a key for change notifications
-  ```
-  SUBSCRIBE key1
-  ```
-
-- **UNSUBSCRIBE**: Unsubscribe from a key
-  ```
-  UNSUBSCRIBE key1
-  ```
-
-- **DELAY**: Delay client execution (in seconds)
-  ```
-  DELAY 5
-  ```
-
-- **DISCONNECT**: Terminate the session
-  ```
-  DISCONNECT
-  ```
+```bash
+SUBSCRIBE <key>      # Subscribe to key change notifications
+UNSUBSCRIBE <key>    # Unsubscribe from key
+DELAY <seconds>      # Delay execution
+DISCONNECT           # Terminate session
+```
 
 ## Usage
 
-### Server
+### Compilation
 
 ```bash
-./kvs <jobs_directory> <max_concurrent_backups> <max_threads> <register_fifo_name>
+make            # Build the project
+make clean      # Remove build artifacts
 ```
 
-**Parameters:**
-- `jobs_directory`: Directory containing `.job` files
-- `max_concurrent_backups`: Maximum number of simultaneous backup operations (Part 1: 3rd parameter)
-- `max_threads`: Number of threads for parallel job processing (Part 1: 2nd parameter)
-- `register_fifo_name`: Named pipe for client registration (Part 2 only)
+### Running the Server
 
-**Part 1 Example:**
+**Part 1** (File processing only):
+```bash
+./kvs <jobs_directory> <max_concurrent_backups> <max_threads>
+```
+
+Example:
 ```bash
 ./kvs ./jobs 2 4
 ```
 
-**Part 2 Example:**
+**Part 2** (With client-server support):
+```bash
+./kvs <jobs_directory> <max_threads> <max_concurrent_backups> <register_fifo_name>
+```
+
+Example:
 ```bash
 ./kvs ./jobs 4 2 register_fifo
 ```
 
-### Client
+### Running a Client (Part 2)
 
 ```bash
 ./client/client <client_id> <register_fifo_name>
 ```
 
-**Example:**
+Example with input file:
 ```bash
 ./client/client c1 register_fifo < test_client.txt
 ```
 
-## Output Files
+Interactive mode:
+```bash
+./client/client c1 register_fifo
+SUBSCRIBE mykey
+DELAY 5
+UNSUBSCRIBE mykey
+DISCONNECT
+```
 
-- **`.out` files**: Results of command execution for each `.job` file
-- **`.bck` files**: Backup snapshots named as `<filename>-<backup_number>.bck`
+## Input/Output
 
-**Example:**
-- Input: `test.job`
-- Outputs: `test.out`, `test-1.bck`, `test-2.bck`
+### Input Files
+- **`.job` files**: Contain sequences of server commands
+- **Client input**: Commands via stdin or input redirection
+
+### Output Files
+- **`.out` files**: Results of executing each `.job` file
+- **`.bck` files**: Backup snapshots named `<filename>-<backup_number>.bck`
+
+### Example
+
+Input file `test.job`:
+```bash
+# Create keys
+WRITE [(user1,alice)(user2,bob)]
+# Read keys
+READ [user1,user2]
+# Create backup
+BACKUP
+# Display all
+SHOW
+```
+
+Output file `test.out`:
+```bash
+[(user1,alice)(user2,bob)]
+(user1,alice)
+(user2,bob)
+```
+
+Backup file `test-1.bck`:
+```bash
+(user1,alice)
+(user2,bob)
+```
 
 ## Client-Server Protocol
 
 ### Message Format
 
-All messages follow a binary protocol with fixed-size fields:
+All messages use binary protocol with fixed-size fields:
 
-- **Connect**: `OP_CODE(1) | req_pipe[40] | resp_pipe[40] | notif_pipe[40]`
-- **Disconnect**: `OP_CODE(2)`
-- **Subscribe**: `OP_CODE(3) | key[41]`
-- **Unsubscribe**: `OP_CODE(4) | key[41]`
-- **Notifications**: `key[41] | value[41]` (or `DELETED` for deleted keys)
+| Operation | Request Format | Response Format |
+|-----------|---------------|-----------------|
+| Connect | `OP_CODE(1)` \| `req_pipe[40]` \| `resp_pipe[40]` \| `notif_pipe[40]` | `OP_CODE(1)` \| `result` |
+| Disconnect | `OP_CODE(2)` | `OP_CODE(2)` \| `result` |
+| Subscribe | `OP_CODE(3)` \| `key[41]` | `OP_CODE(3)` \| `result` |
+| Unsubscribe | `OP_CODE(4)` \| `key[41]` | `OP_CODE(4)` \| `result` |
 
-Response messages include: `OP_CODE | result` (0 = success, 1 = error)
+**Notifications**: `key[41]` \| `value[41]` (or `key[41]` \| `DELETED[41]`)
 
-## Architecture
+**Result codes**: `0` = success, `1` = error
 
-### Part 1 Architecture
-- Main thread reads and distributes job files
-- Worker threads process jobs concurrently
-- Fork-based child processes handle backups
-- Synchronization ensures atomic operations
+Strings are fixed-size (40 chars) with null padding. Keys include terminating null character (41 bytes total).
 
-### Part 2 Architecture
-- **Host Thread**: Receives client connection requests via register FIFO
-- **Manager Threads**: Handle client requests (S simultaneous sessions)
-- **Job Processing Threads**: Execute commands from `.job` files
-- **Producer-Consumer Buffer**: Coordinates connection requests
-- **Named Pipes**: Three per client (requests, responses, notifications)
+## Synchronization Mechanisms
 
-## Synchronization
+- **Mutexes**: Protect critical sections in hashtable operations
+- **Read-Write Locks**: Allow multiple concurrent reads, exclusive writes
+- **Semaphores**: Implement producer-consumer pattern for client connections
+- **Signals**: SIGUSR1 handled only by host thread to disconnect all clients
+- **Thread Masks**: Worker threads block SIGUSR1 using `pthread_sigmask()`
 
-- **Mutexes**: Protect hashtable access
-- **Read-Write Locks**: Optimize concurrent read operations
-- **Semaphores**: Implement producer-consumer buffer for client connections
-- **Signals**: SIGUSR1 terminates all client connections
+## Technical Constraints
 
-## Compilation
-
-```bash
-make
-```
-
-Clean build artifacts:
-```bash
-make clean
-```
-
-## Testing Environment
-
-The project should compile and run correctly on the **Sigma cluster**. While development on other platforms (macOS, Windows/WSL) is allowed, official support is only provided for the Sigma environment.
-
-## Important Notes
-
+- Maximum key/value length: 40 characters
 - Keys and values cannot contain spaces
-- Maximum size: 40 characters for keys and values
-- Comments in `.job` files start with `#`
-- The string `KVSERROR` is reserved for read errors
-- The string `KVSMISSING` is reserved for delete errors
-- The string `DELETED` is reserved for deletion notifications
-- All file operations must use POSIX file descriptors (not stdio.h)
-- Client processes use two threads: main thread for commands, second thread for notifications
+- Reserved strings: `KVSERROR`, `KVSMISSING`, `DELETED`
+- File operations must use POSIX API (no `stdio.h` FILE streams)
+- Maximum simultaneous sessions: S (defined in server code)
 
-## Submission
+## Project Structure
 
-- **Part 1 Deadline**: December 13, 2024, 23:59
-- **Part 2 Deadline**: January 13, 2025, 23:59
-- **Format**: ZIP file containing source code and Makefile
-- **Platform**: Submit via Fénix
-- **Requirements**: No binaries, `make clean` must remove all compiled files
+```
+.
+├── server/
+│   ├── kvs.c              # Main server implementation
+│   ├── operations.c       # Hashtable operations
+│   └── ...
+├── client/
+│   ├── client.c           # Client implementation
+│   ├── api.c              # Client API functions
+│   └── ...
+├── jobs/
+│   ├── test.job           # Example job file
+│   └── ...
+├── Makefile
+└── README.md
+```
 
-## Academic Integrity
+## Development Environment
 
-This project must be original work. Code sharing between groups or use of external sources will result in:
-- Failure for all involved groups
-- Report to LEIC coordination and IST Pedagogical Council
+**Recommended**: Sigma cluster (officially supported)
+
+**Also compatible**: macOS, Linux, Windows/WSL (community support only)
+
+The project must compile and run correctly on the Sigma cluster for evaluation purposes.
+
+## Testing
+
+### Part 1 Testing
+```bash
+# Create sample job file
+echo "WRITE [(key1,value1)]" > jobs/test.job
+echo "READ [key1]" >> jobs/test.job
+echo "SHOW" >> jobs/test.job
+
+# Run server
+./kvs ./jobs 2 4
+
+# Check output
+cat jobs/test.out
+```
+
+### Part 2 Testing
+```bash
+# Terminal 1: Start server
+./kvs ./jobs 4 2 register_fifo
+
+# Terminal 2: Run client
+./client/client c1 register_fifo
+SUBSCRIBE key1
+# (Keep running to receive notifications)
+
+# Terminal 3: Trigger writes
+echo "WRITE [(key1,newvalue)]" > jobs/update.job
+# Client in Terminal 2 will receive notification
+```
+
+## Implementation Highlights
+
+### Part 1: Core System
+- **Exercise 1**: POSIX file I/O, directory traversal, batch processing
+- **Exercise 2**: Process forking, non-blocking backups, concurrent backup limiting
+- **Exercise 3**: Thread pool implementation, fine-grained locking strategies
+
+### Part 2: Client-Server
+- **Exercise 1**: Named pipe creation/management, protocol implementation, subscription system, multi-threaded client handling
+- **Exercise 2**: Signal handling, graceful disconnection, thread-safe signal masking
+
+## Learning Outcomes
+
+This project provides hands-on experience with:
+- Multi-threaded programming and synchronization primitives
+- Process creation and inter-process communication (IPC)
+- Named pipes (FIFOs) for client-server communication
+- Signal handling and thread-signal interactions
+- POSIX file system API
+- Producer-consumer patterns with semaphores
+- Scalable locking strategies for concurrent data structures
+- Non-blocking I/O operations
 
 ## Authors
 
-Developed for the Operating Systems course at Instituto Superior Técnico, LEIC-A/LEIC-T/LETI programs.
+Developed for Operating Systems (Sistemas Operativos) course, 2024-25  
+Instituto Superior Técnico, Universidade de Lisboa  
+LEIC-A / LEIC-T / LETI programs
+
+## License
+
+This project is for educational purposes as part of the Operating Systems course at IST.
 
 ---
 
-For questions and support, refer to course materials and instructors.
+**Note**: This implementation follows academic integrity guidelines. All code is original work developed for learning purposes.
